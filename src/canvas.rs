@@ -4,7 +4,7 @@ use std::{fs::File, os::unix::prelude::FileExt, time::Instant};
 const CLEAR_CHAR: u8 = 0x20;
 const RECT_CHAR: u8 = 0x23;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Vec2 {
     pub x: u32,
     pub y: u32,
@@ -16,6 +16,7 @@ pub struct Rectangle {
     pub size: Vec2,
 }
 
+/// Provides a canvas to draw rectangles and render them to a file
 #[derive(Debug)]
 pub struct Canvas {
     size: Vec2,
@@ -34,11 +35,7 @@ pub enum CanvasError {
 }
 
 impl Canvas {
-    pub fn new(width: u32, height: u32, res: u32, file: File) -> Self {
-        let size = Vec2 {
-            x: width,
-            y: height,
-        };
+    pub fn new(size: Vec2, res: u32, file: File) -> Self {
         let content = vec![vec![CLEAR_CHAR; size.x as usize]; size.y as usize];
         let mut screen = vec![vec![0; (size.x * res + 1) as usize]; (size.y * res) as usize];
         for row in screen.iter_mut() {
@@ -54,7 +51,7 @@ impl Canvas {
         }
     }
 
-    /// Scale content to canvas resolution and add line returns
+    /// Scale content to canvas resolution and add line returns.
     fn scale_screen(&mut self) {
         for (i, row) in self.screen.iter_mut().enumerate() {
             for (j, pixel) in row.iter_mut().enumerate() {
@@ -69,6 +66,7 @@ impl Canvas {
         }
     }
 
+    /// Draw a rectangle on the canvas.
     pub fn draw_rect(&mut self, rect: Rectangle) -> Result<(), CanvasError> {
         if rect.pos.x + rect.size.x > self.size.x || rect.pos.y + rect.size.y > self.size.y {
             error!(
@@ -86,6 +84,7 @@ impl Canvas {
         Ok(())
     }
 
+    /// Clear canvas buffer.
     pub fn clear(&mut self) {
         for row in self.content.iter_mut() {
             for pixel in row.iter_mut() {
@@ -94,6 +93,7 @@ impl Canvas {
         }
     }
 
+    /// Render canvas buffer to a file.
     pub fn render(&mut self) {
         let now = Instant::now();
         self.scale_screen();

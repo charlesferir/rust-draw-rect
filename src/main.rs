@@ -1,14 +1,17 @@
 mod canvas;
+mod physics;
 
-use canvas::{Canvas, Rectangle, Vec2};
+use canvas::Canvas;
 use clap::Parser;
 use log::error;
+use physics::Simulation;
 use simple_logger::SimpleLogger;
 use std::{fs::OpenOptions, thread::sleep, time::Duration};
 
-const DEFAULT_WIDTH: u32 = 160;
-const DEFAULT_HEIGHT: u32 = 144;
+const DEFAULT_WIDTH: u32 = 100;
+const DEFAULT_HEIGHT: u32 = 30;
 const DEFAULT_RESOLUTION: u32 = 1;
+const DEFAULT_CHARS_PER_METER: u32 = 10;
 
 /// Simple program that draws rectangles in a file.
 #[derive(Parser, Debug)]
@@ -26,6 +29,10 @@ struct Cli {
     #[arg(short, long, default_value_t = DEFAULT_RESOLUTION)]
     resolution: u32,
 
+    /// Chars per meters
+    #[arg(short, long, default_value_t = DEFAULT_CHARS_PER_METER)]
+    chars_per_meter: u32,
+
     /// Canvas width
     #[arg(long, default_value_t = DEFAULT_WIDTH)]
     width: u32,
@@ -33,6 +40,53 @@ struct Cli {
     /// Canvas height
     #[arg(long, default_value_t = DEFAULT_HEIGHT)]
     height: u32,
+}
+
+trait ToVec2Sim {
+    fn to_vec2_sim(&self, chars_per_meter: u32) -> physics::Vec2;
+}
+
+trait ToVec2Canvas {
+    fn to_vec2_canvas(&self, chars_per_meter: u32) -> canvas::Vec2;
+}
+
+trait ToRectCanvas {
+    fn to_rect_canvas(&self, chars_per_meter: u32) -> canvas::Rectangle;
+}
+
+impl ToVec2Sim for canvas::Vec2 {
+    fn to_vec2_sim(&self, chars_per_meter: u32) -> physics::Vec2 {
+        physics::Vec2 {
+            x: self.x as f32 / chars_per_meter as f32,
+            y: self.y as f32 / chars_per_meter as f32,
+        }
+    }
+}
+
+impl ToVec2Canvas for physics::Vec2 {
+    fn to_vec2_canvas(&self, chars_per_meter: u32) -> canvas::Vec2 {
+        canvas::Vec2 {
+            x: (self.x * chars_per_meter as f32).round() as u32,
+            y: (self.y * chars_per_meter as f32).round() as u32,
+        }
+    }
+}
+
+impl ToRectCanvas for physics::Rectangle {
+    fn to_rect_canvas(&self, chars_per_meter: u32) -> canvas::Rectangle {
+        canvas::Rectangle {
+            pos: self.pos.to_vec2_canvas(chars_per_meter),
+            size: self.size.to_vec2_canvas(chars_per_meter),
+        }
+    }
+}
+
+fn sim_to_canvas(sim: &Simulation, canvas: &mut Canvas, chars_per_meter: u32) {
+    for rectangle in sim.get_rectangles().iter() {
+        canvas
+            .draw_rect(rectangle.to_rect_canvas(chars_per_meter))
+            .expect("Could not draw rectangle");
+    }
 }
 
 fn main() -> Result<(), std::io::Error> {
@@ -58,19 +112,31 @@ fn main() -> Result<(), std::io::Error> {
         }
     };
 
-    let mut canvas = Canvas::new(args.width, args.height, args.resolution, file);
+    let canvas_size = canvas::Vec2 {
+        x: args.width,
+        y: args.height,
+    };
+    let sim_size = canvas_size.to_vec2_sim(args.chars_per_meter);
+    let mut simulation = Simulation::new(sim_size);
+    let mut canvas = Canvas::new(canvas_size, args.resolution, file);
 
-    // Draw a droping rectangle
-    for i in 0..args.height - 9 {
+    simulation
+        .add_rectangle(physics::Rectangle {
+            pos: physics::Vec2 {
+                x: sim_size.x / 2.0,
+                y: sim_size.y / 2.0,
+            },
+            size: physics::Vec2 { x: 1.0, y: 1.0 },
+            vel: physics::Vec2 { x: 1.0, y: 1.0 },
+        })
+        .expect("Could not add rectangle");
+
+    // Draw a bouncing rectangle
+    loop {
+        simulation.update(0.1);
         canvas.clear();
-        canvas
-            .draw_rect(Rectangle {
-                pos: Vec2 { x: 10, y: i },
-                size: Vec2 { x: 10, y: 10 },
-            })
-            .expect("Could not draw rectangle");
+        sim_to_canvas(&simulation, &mut canvas, args.chars_per_meter);
         canvas.render();
         sleep(Duration::from_millis(100));
     }
-    Ok(())
 }
